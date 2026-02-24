@@ -1,0 +1,81 @@
+# GL_Project: Technical Architecture Deep Dive
+
+This document provides a comprehensive technical overview of the GL_Project ecosystem, detailing the implementation patterns, request lifecycles, and cross-cutting concerns.
+
+## Architecture Blueprint
+
+The system follows a modern microservices architecture built on Spring Boot 3.2.3 and Spring Cloud 2023.0.0.
+
+### 1. Discovery Server (Netflix Eureka)
+- Role: Service Registry and Discovery.
+- Implementation: DiscoveryServerApplication with @EnableEurekaServer.
+- Config: Hosted on port 8761. Services register heartbeats to maintain a live registry.
+- UI: Provides a dashboard to monitor instance health (UP/DOWN).
+
+### 2. Config Server (Centralized Management)
+- Role: Decouples configuration from code.
+- Strategy: Filesystem-based (native profile).
+- Endpoint: Port 8888.
+- Logic: Serves service-specific files (e.g., core-service.yml) and handles property inheritance.
+
+### 3. API Gateway (Dynamic Proxy & Security)
+- Role: Single Point of Entry (BFF Pattern).
+- Core Components:
+    - JwtAuthenticationFilter: Extends OncePerRequestFilter. Validates Bearer tokens via JwtUtil using jjwt-api.
+    - RoutingService: Instead of hardcoded routes, it uses DiscoveryClient to fetch instances from Eureka at runtime.
+    - LoadBalancerStrategy: Implements Round-Robin logic via a custom interface to distribute traffic across multiple instances.
+    - AuditService: Persists route access logs (path, status, user) into an H2/MySQL database for monitoring.
+- Auth Flow: SecurityConfig (Spring Security 6) enables stateless sessions and enforces authorization.
+
+### 4. Core Service (Business Logic)
+- Role: Handles specific business domains (e.g., User management).
+- Persistence: MongoDB (spring-boot-starter-data-mongodb).
+- Features:
+    - Swagger/OpenAPI: Aggregates documentation via springdoc-openapi. Accessible at /swagger-ui.html.
+    - Centralized Logs: Fetches debug levels and MongoDB URIs from the Config Server on bootstrap.
+    - Discovery: Registered as core-service with Eureka, enabling discovery-based routing.
+
+---
+
+## In-Depth Request Flow (Logic)
+
+1. Startup Phase:
+   - Core Service requests configuration from Config Server (GET /core-service/default).
+   - Config Server returns MongoDB URI and Swagger paths.
+   - Core Service registers its IP and Port with the Discovery Server.
+
+2. Request Phase:
+   - Client sends HTTP request with JWT to API Gateway.
+   - Gateway validates JWT via JwtAuthenticationFilter.
+   - Gateway queries Discovery Server for available "core-service" instances.
+   - Gateway picks an instance using Round-Robin Load Balancer.
+   - Gateway forwards request to the Core Service.
+   - Core Service executes business logic and interacts with MongoDB.
+   - Gateway audits the success/failure of the route access.
+   - Client receives the JSON response.
+
+---
+
+## Folder Structure & Key Files
+
+| Directory | Important File | Responsibility |
+| :--- | :--- | :--- |
+| api-gateway | JwtAuthenticationFilter.java | Intercepts requests for authentication. |
+| | RoutingService.java | Core logic for dynamic request forwarding. |
+| config-server | core-service.yml | Centralized properties for the Core Service. |
+| core-service | bootstrap.yml | Instructs the service where to find the Config Server. |
+| | CoreController.java | REST endpoints for the business domain. |
+
+## Cross-Cutting Concerns
+
+- Zero-Trust Security: Every request passing through the Gateway is validated against a JWT.
+- Resilience:
+    - Fail-Fast: Services fail early if the Config Server is unreachable.
+    - Retries: Configured to retry connection to Config Server up to 5 times on startup.
+- Load Balancing: The api-gateway natively utilizes DiscoveryClient to implement provider-agnostic load balancing.
+
+## API Documentation
+The system promotes Documentation as Code.
+- URL: http://localhost:7080/swagger-ui.html
+- Docs: http://localhost:7080/v3/api-docs
+- Management: Swagger configurations are managed via Config Server, allowing real-time updates.

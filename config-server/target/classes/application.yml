@@ -1,0 +1,52 @@
+server:
+  port: 8888
+  shutdown: graceful
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    active: native
+  cloud:
+    config:
+      server:
+        native:
+          # Search in the root of the classpath (src/main/resources)
+          search-locations: classpath:/
+  
+  # Shared Database Configuration
+  datasource:
+    url: jdbc:mysql://localhost:3306/microservices_db
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/microservices_db
+      auto-index-creation: true
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+  info:
+    env:
+      enabled: true
+
+logging:
+  level:
+    root: INFO
+    org.springframework.web: INFO
