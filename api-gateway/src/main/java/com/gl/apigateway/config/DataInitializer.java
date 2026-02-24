@@ -15,7 +15,6 @@ import java.util.Set;
 public class DataInitializer implements CommandLineRunner {
 
     private final UserRepository userRepository;
-
     @Override
     public void run(String... args) throws Exception {
         // Check if admin verification data exists
